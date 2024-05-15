@@ -5,6 +5,7 @@
 #include "Func.h"
 
 int main(){
+	system("clear");
 	Chat chat;
 	chat.readUser();
 		
