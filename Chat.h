@@ -1,72 +1,66 @@
 #pragma once
 #include <iostream>
-#include <string.h>
+#include <string>
+#include <cstring>
 #include <vector>
 #include "Sha1.h"
-
-#define LOGINLENGTH 10
+#include "Func.h"
 
 class Chat{
 public:
 	Chat(){};
 	
-	/* методы чата для пользователя */
-	void regUser(char _login[LOGINLENGTH], char _pass[], int pass_length); // добавление нового пользователя
-	bool authUser(char _login[LOGINLENGTH], char _pass[], int pass_length); // авторизация
-	void delUser(char _login[LOGINLENGTH]); // удаление пользователя
-	void showUsers(); // вывод списка пользователей
-	int getIndex(char _login[LOGINLENGTH]); // поиск индекса пользователя по имени
-	bool logOut(char _login[LOGINLENGTH]); // выход
-	void userTyping(char _from[LOGINLENGTH], char _to[LOGINLENGTH]); // написание сообщения
+	void regUser(std::string _login, char _pass[], int pass_length);
+	bool authUser(std::string _login, char _pass[], int pass_length);
+	bool logOut(std::string _login);
+	void delUser(std::string _login);	
 	
-	/* сообщения */
-	void getMsgs(char _from[LOGINLENGTH], char _to[LOGINLENGTH]); // вывод истории сообщений
+	void writeUser(std::string _login, std::string _pass);
+	void readUser();
 
+	void userRuntime(std::string _login);
+	void userTyping(std::string _from, std::string _to);
+	
+	void saveMsg(std::string _from, std::string _to, std::string _msg);
+	void getMsgs(std::string _from, std::string _to);
+	void showMsgs(std::string _from, std::string _to);
+	
+	int getIndex(std::string _login);
+	void showUsers();
 private:
 	enum userStatus{
 		online,
 		offline
 	};
 
-	// класс пользователя
 	struct User{
-		User() : login(""), pass_sha1_hash(0), name(""), age(-1), status(userStatus::offline){}
+		User() : login(""), pass_sha1_hash(""), status(userStatus::offline){}
+		User(std::string _login, std::string sh1) :
+					login(_login), pass_sha1_hash(sh1), status(userStatus::offline){}		
 		~User(){}
-
-		User(char _login[LOGINLENGTH], uint* sh1) : name(""), age(-1), status(userStatus::offline){
-			strcpy(login, _login);
-			pass_sha1_hash = sh1;
-		}		
 		
-		/* методы пользователя */
 		std::string getStatus();
 		void switchStatus();
 
-		// переменные пользователя
-		char login[LOGINLENGTH];
-		uint* pass_sha1_hash;
+		std::string login;
+		std::string pass_sha1_hash;
 
-		std::string name;
-		int age;
 		userStatus status;
 	};
 	
-	// класс сообщений
-	struct Msg{ 
-		Msg() : _sender(""), _recipient(""), _msg(""){}
-		Msg(char _from[LOGINLENGTH], char _to[LOGINLENGTH], std::string msg) :  _msg(msg){
-			strcpy(_sender, _from);
-			strcpy(_recipient, _to);
-		}
+	struct Msg{
+		Msg() : _sender(""), _receiver(""), _msg(""){}
+		Msg(std::string time, std::string _from, std::string _to, std::string msg) :
+					_time(time), _msg(msg), _sender(_from), _receiver(_to){}
 		~Msg(){}
 		
-		// переменные класса сообщений
-		char _sender[LOGINLENGTH];
-		char _recipient[LOGINLENGTH];
+		std::string _sender;
+		std::string _receiver;
 		std::string _msg;
+		std::string _time;
 	};
 
-	// хранение списка пользователей и сообщений
 	std::vector <User> _users{};
 	std::vector <Msg> _messages{};
+	int _usercount{0};
 };

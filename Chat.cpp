@@ -1,31 +1,47 @@
 #include <iostream>
-#include <string.h>
+#include <fstream>
+#include <filesystem>
+#include <string>
+#include <cstring>
 #include <vector>
 #include "Chat.h"
 
-/* Чат */
-// добавление
-void Chat::regUser(char _login[LOGINLENGTH], char _pass[], int pass_length){
+namespace fs = std::filesystem; 
+
+// Пользователь
+void Chat::regUser(std::string _login, char _pass[], int pass_length){
 	std::cout << "Создание аккаунта пользователя...";
+
+	for(int i = 0; i < _login.size(); i++){
+		if(_login[i] == ';' || _login [i] == '/' || _login [i] == ':' ){
+			std::cout << "Ошибка\nНедопустимые символы (; или /)\n" << std::endl;
+			return;
+		}
+	}
+
 	for(int i = 0; i < _users.size(); i++){
-		if(!strcmp(_login, _users[i].login)){
+		if(_login == _users[i].login){
 			std::cout << "Ошибка\nЛогин занят, выберите другой логин!\n" << std::endl;
 			return;
 		}
 	}
 
 	uint* h = sha1(_pass, pass_length);
-	User newUser(_login, h);
+	User newUser(_login, to_string(*h));
 	_users.push_back(newUser);
+	++_usercount;
+	
+	writeUser(_login, to_string(*h));
 	std::cout << "Успешно\nНовый пользователь добавлен!\n";
+	
+	delete[] h;
 }
 
-// авторизация
-bool Chat::authUser(char _login[LOGINLENGTH], char _pass[], int pass_length){
+bool Chat::authUser(std::string _login, char _pass[], int pass_length){
 	std::cout << "Проверка данных пользователя...";
 	int size = _users.size();
 	int i = 0;
-	while(strcmp(_login, _users[i].login) && i < size){
+	while(_login != _users[i].login && i < size){
 		i++;
 	}
 	if(i >= size){
@@ -34,7 +50,7 @@ bool Chat::authUser(char _login[LOGINLENGTH], char _pass[], int pass_length){
 	}
 
 	uint* h = sha1(_pass, pass_length);
-	bool result = !memcmp(_users[i].pass_sha1_hash, h, SHA1HASHLENGTHBYTES);
+	bool result{_users[i].pass_sha1_hash == to_string(*h)};
 	
 	if(!result){
 		std::cout << "Ошибка\nНеверный пароль!\n";
@@ -48,20 +64,19 @@ bool Chat::authUser(char _login[LOGINLENGTH], char _pass[], int pass_length){
 	return result;
 }
 
-// выход
-bool Chat::logOut(char _login[LOGINLENGTH]){
+bool Chat::logOut(std::string _login){
 	_users[getIndex(_login)].switchStatus();
-	std::cout << "Пользователь вышел из чата!\n";
+	_messages.clear();
+	std::cout << "Пользователь " << _login <<  " вышел из чата!\n";
 	return false; 
 }
 
-// удаление
-void Chat::delUser(char _login[LOGINLENGTH]){
+void Chat::delUser(std::string _login){
 	std::cout << "Удаление данных пользователя...";
 	if(_users.empty()){ std::cout << "Ошибка\nПользователь не найден!\n"; return; }
 
 	for(int i = 0; i < _users.size(); i++){
-		if(strcmp(_login, _users[i].login)){
+		if(_login == _users[i].login){
 			_users.erase(_users.begin() + i);
 			std::cout << "Успешно\nДанные удалены!\n";
 			return;
@@ -71,34 +86,162 @@ void Chat::delUser(char _login[LOGINLENGTH]){
 	std::cout << "Ошибка\nПользователь на найден!\n";
 }
 
-// функция написания сообщения
-void Chat::userTyping(char _from[LOGINLENGTH], char _to[LOGINLENGTH]){
+void Chat::writeUser(std::string _login, std::string _pass){
+	fs::path filepath{"accounts.txt"};
+	std::ofstream file(filepath, std::ios::out);
+    if(file.is_open()){
+		file << _usercount << '\n';
+		for(int i = 0; i < _usercount; i++){
+			file << _users[i].login << ':' << _users[i].pass_sha1_hash <<',';
+		}
+		file.close();
+    }
+}
+
+void Chat::readUser(){
+	fs::path filepath{"accounts.txt"};
+	std::ifstream file(filepath, std::ios::in);
+	
+	std::string x, y, temp;
+	if(file.is_open()){
+		getline(file, temp, '\n');
+		_usercount = stoi(temp);
+		for(int i = 0; i < _usercount; i++){
+			getline(file, x, ':');
+			getline(file, y, ',');
+			User user(x,y);
+			_users.push_back(user);
+		}	
+		file.close();
+	}
+}
+
+// Выполнение программы
+void Chat::userRuntime(std::string _login){
+	while(true){
+		std::cout << "Введите имя собеседника ([q]uit для выхода):\n----------\nall\t(общий диалог)\n";
+		showUsers();
+		std::cout << "----------\n";
+
+		std::cout << _login << ": ";
+		std::string _to;
+		std::getline(std::cin, _to, '\n');
+		
+		if(_to == "q"){
+			return;
+		}
+
+		system("clear");	
+		if(_to == "all"){
+			std::cout << "---------- Групповой чат ----------" << std::endl;
+		}
+		else if(getIndex(_to) < 0){ continue; }
+		else{
+			std::cout << "---------- Собеседник  " << _to << " ----------" << std::endl; 
+		}
+		getMsgs(_login, _to);
+		showMsgs(_login, _to);
+		userTyping(_login, _to);	
+	}	
+}
+
+void Chat::userTyping(std::string _from, std::string _to){
 	while(true){
 		std::string msg_body;
 		std::cout << _from << ": ";
-		std::getline(std::cin, msg_body);
+		std::getline(std::cin, msg_body, '\n');
 
 		if(msg_body == "q"){
 			system("clear");
 			break;
 		}
 		else{
-			_messages.emplace_back(_from, _to, msg_body);
+			saveMsg(_from, _to, msg_body);
 		}
 	}
 }
 
-// вывод списка пользователей
-void Chat::showUsers(){
-	for(int i = 0; i < _users.size(); i++){
-		std::cout << _users[i].login << '\t' << _users[i].name << '\t' << _users[i].getStatus() << '\n';
+// сообщения
+void Chat::saveMsg(std::string _from, std::string _to, std::string _msg){
+	fs::path dir("dialogs");
+	if(!fs::exists(dir)){
+		create_directory(dir);
+	}
+
+	if(_to != "all"){
+		fs::path filepath1{dir / (_from + _to + ".txt")};
+		fs::path filepath2{dir / (_to + _from + ".txt")};
+
+		std::ofstream file1(filepath1, std::ios::app);
+		if(file1.is_open()){
+    	   file1 << getTime() << ';' << _from << ';' << _to << ';' << _msg <<'\n';
+    	   file1.close();
+		}
+		
+		std::ofstream file2(filepath2, std::ios::app);
+		if(file2.is_open()){
+    	   file2 << getTime() << ';' << _from << ';' << _to << ';' << _msg <<'\n';
+    	   file2.close();
+		}
+	}
+	else{
+		fs::path filepath{dir / "group.txt"};
+		std::ofstream file(filepath, std::ios::app);
+    	if(file.is_open()){
+    	   file << getTime() << ';' << _from << ';' << _to << ';' << _msg <<'\n';
+    	   file.close();
+    	}
 	}
 }
 
-// поиск индекса (проверка существования пользователя) по логину
-int Chat::getIndex(char _login[LOGINLENGTH]){ // поиск индекса пользователя по имени
+void Chat::getMsgs(std::string _from, std::string _to){
+	fs::path dir("dialogs");
+	if(fs::exists(dir)){
+		std::string d, f, t, m, paths;
+
+		paths = _to != "all" ?  (_from + _to + ".txt") : "group.txt";
+		
+		fs::path filepath{dir / paths};
+		std::ifstream file(filepath, std::ios::in);
+		
+		if(file.is_open()){
+			while(getline(file, d, ';')){
+				getline(file, f, ';');
+				getline(file, t, ';');
+				getline(file, m, '\n');
+
+				Msg msg(d, f, t,m);
+				_messages.push_back(msg);
+			}
+			file.close();
+		}
+	}
+}
+
+void Chat::showMsgs(std::string _from, std::string _to){
+	for(int i = 0; i < _messages.size(); i++){
+		if(_to == "all" && _to == _messages[i]._receiver){
+			std::cout << _messages[i]._sender << " (" << _messages[i]._time <<  "): " <<  _messages[i]._msg << std::endl;
+		}
+		else if(_from == _messages[i]._sender && _to == _messages[i]._receiver){
+			std::cout << _messages[i]._sender << " (" << _messages[i]._time <<  "): " <<  _messages[i]._msg << std::endl;
+		}
+		else if(_from == _messages[i]._receiver && _to == _messages[i]._sender){
+			std::cout << _messages[i]._sender << " (" << _messages[i]._time <<  "): " <<  _messages[i]._msg << std::endl;
+		}
+	}
+}
+
+// дополнительные функции
+void Chat::showUsers(){
 	for(int i = 0; i < _users.size(); i++){
-		if(!strcmp(_login, _users[i].login)){
+		std::cout << _users[i].login << '\t' << _users[i].getStatus() << '\t' << '\n';
+	}
+}
+
+int Chat::getIndex(std::string _login){
+	for(int i = 0; i < _users.size(); i++){
+		if(_login == _users[i].login){
 			return i;
 		}
 	}
@@ -106,33 +249,10 @@ int Chat::getIndex(char _login[LOGINLENGTH]){ // поиск индекса по�
 	return -1;
 }
 
-// вывод истории сообщений
-void Chat::getMsgs(char _from[LOGINLENGTH], char _to[LOGINLENGTH]){ // вывод истории сообщений
-	for(int i = 0; i < _messages.size(); i++){ // групповые сообщения
-		if(!strcmp(_to, "all") && !strcmp(_to, _messages[i]._recipient)){
-			std::cout << _messages[i]._sender << ": " <<  _messages[i]._msg << std::endl;
-		}
-		else if(!strcmp(_from, _messages[i]._sender) && !strcmp(_to, _messages[i]._recipient)){
-			std::cout << _messages[i]._sender << ": " <<  _messages[i]._msg << std::endl;
-		}
-		else if(!strcmp(_from, _messages[i]._recipient) && !strcmp(_to, _messages[i]._sender)){
-			std::cout << _messages[i]._sender << ": " <<  _messages[i]._msg << std::endl;
-		}
-	}
-}
-
-/* пользователь*/
-// пролучение данных статуса
 std::string Chat::User::getStatus(){
-	if(this->status == 0){
-		return "online";
-	}
-	else{
-		return "offline";
-	}
+	return this->status == 0 ? "online" : "offline";
 }
 
-// изменение статуса
 void Chat::User::switchStatus(){
 	if(this->status == 1){
 		this->status = userStatus::online;
